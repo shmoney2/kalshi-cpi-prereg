@@ -65,6 +65,18 @@ def test_event_dates():
     assert info("2021-07-13T23:00:00Z", True, ".9%")["actual"] == 0.9
 
 
+def test_release_matching():
+    from datetime import date
+    import pandas as pd
+    from kalshi_fetch import DEFAULT_CPI_DATES, match_release
+    official = sorted(pd.to_datetime(pd.read_csv(DEFAULT_CPI_DATES)["release_date"]).dt.date)
+    assert match_release(date(2024, 6, 12), official) == date(2024, 6, 12)
+    assert match_release(date(2025, 10, 15), official) is None    # Sep 2025 CPI slipped to 10-24; Kalshi closed 10-15
+    assert match_release(date(2025, 11, 13), official) is None    # Oct 2025 CPI was never published
+    assert date(2025, 10, 24) in official and match_release(date(2025, 12, 18), official) == date(2025, 12, 18)
+    assert match_release(date(2024, 6, 12), []) is None
+
+
 def test_strikes_and_distribution():
     for args in [("greater", 0.3, None, 0.6), ("greater_or_equal", 0.4, None, 0.6),
                  ("less", None, 0.4, 0.4), ("less_or_equal", None, 0.3, 0.4)]:
@@ -219,6 +231,6 @@ def test_solana_stamp():
 
 
 if __name__ == "__main__":
-    test_candles(); test_strike_from_ticker(); test_event_dates(); test_strikes_and_distribution(); test_price_rule(); test_massive_parsing(); test_dividend_added_back()
+    test_candles(); test_strike_from_ticker(); test_event_dates(); test_release_matching(); test_strikes_and_distribution(); test_price_rule(); test_massive_parsing(); test_dividend_added_back()
     test_solana_stamp()
     print("all offline checks passed")

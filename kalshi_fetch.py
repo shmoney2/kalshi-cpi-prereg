@@ -43,6 +43,9 @@ DEFAULT_SERIES = {
     "cpi_core": ["KXCPICORE", "CPICORE"],
     "fed": ["KXFED", "FED"],
 }
+# Official BLS CPI release dates. The 2025 shutdown moved September 2025 CPI to 2025-10-24
+# (Kalshi's markets had closed on the original 10-15 date) and October 2025 CPI was never published.
+DEFAULT_CPI_DATES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cpi_release_dates.csv")
 ROLE_SNAPSHOTS = {"cpi_headline": ["t0", "pre"], "cpi_core": ["t0", "pre"],
                   "fed": ["t0", "pre", "post"]}
 
@@ -276,6 +279,14 @@ def snap_to(d, candidates, tol_days=3):
     return best if abs((best - d).days) <= tol_days else d
 
 
+def match_release(d, release_dates, tol_days=3):
+    """Official release date within tol_days of d, or None (no CPI was published near d)."""
+    if not release_dates:
+        return None
+    best = min(release_dates, key=lambda c: abs((c - d).days))
+    return best if abs((best - d).days) <= tol_days else None
+
+
 # ---------------------------------------------------------------- main routines
 def probe(cl, series):
     evs = events_for_series(cl, series)
@@ -311,7 +322,9 @@ def main():
     ap.add_argument("--cpi-series", nargs="+", default=DEFAULT_SERIES["cpi_headline"])
     ap.add_argument("--core-series", nargs="+", default=DEFAULT_SERIES["cpi_core"])
     ap.add_argument("--fed-series", nargs="+", default=DEFAULT_SERIES["fed"])
-    ap.add_argument("--cpi-dates", help="optional CSV with column release_date (BLS schedule)")
+    ap.add_argument("--cpi-dates", default=DEFAULT_CPI_DATES if os.path.exists(DEFAULT_CPI_DATES) else None,
+                    help="CSV with column release_date (BLS schedule); CPI events not within 3 days of "
+                         f"an official release are skipped. Default: {DEFAULT_CPI_DATES} if present")
     ap.add_argument("--fomc-dates", help="optional CSV with column decision_date")
     ap.add_argument("--pause", type=float, default=0.08, help="seconds between API calls")
     ap.add_argument("--max-releases", type=int, default=None, help="for quick test runs")
@@ -356,7 +369,14 @@ def main():
                 if role != "fed" and not (6 <= info["close_et"].hour <= 9 or info["close_et"].hour >= 18):
                     print(f"  note: {e['event_ticker']} closes at {info['close_et']:%H:%M} ET; "
                           "check its release date (use --cpi-dates to pin it)")
-                key = snap_to(info["date"], fomc_dates if role == "fed" else cpi_dates)
+                if role != "fed" and cpi_dates:
+                    key = match_release(info["date"], cpi_dates)
+                    if key is None:
+                        print(f"  skip: {e['event_ticker']} (dated {info['date']}) has no official CPI "
+                              "release within 3 days")
+                        continue
+                else:
+                    key = snap_to(info["date"], fomc_dates if role == "fed" else cpi_dates)
                 info["date"] = key
                 event_info[role][e["event_ticker"]] = info
                 markets_by_event[e["event_ticker"]] = rows
