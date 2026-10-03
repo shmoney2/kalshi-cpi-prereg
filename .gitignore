@@ -1,0 +1,12 @@
+.env
+data/
+data_synth/
+results/
+results_synth/
+__pycache__/
+*.pyc
+.venv/
+
+# Solana keypairs: never commit
+*keypair*.json
+fed-prereg.json
