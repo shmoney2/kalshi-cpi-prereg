@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python run_all.py
 ```
 
-`run_all.py` reruns the Stage 1 test, the Stage 2-lite test and the track reporting additions (out-of-sample split, pricing sensitivity, count of every test run) from the per-release files in `derived/`. It then checks 100 headline numbers against `derived/headline_numbers.json` and writes the summaries and figures to `reproduced/`:
+`run_all.py` reruns the Stage 1 test, the Stage 2-lite test and the track reporting additions (out-of-sample split, pricing sensitivity, risk reporting, count of every test run) from the per-release files in `derived/`. It then checks 114 headline numbers against `derived/headline_numbers.json` and writes the summaries and figures to `reproduced/`:
 
 | Output | Contents |
 | --- | --- |
@@ -69,6 +69,7 @@ Files changed after a stamp are listed; each change is either a data-plumbing fi
 | `note/pricing_the_print.pdf` | The quant note; rebuild with `pip install -r note/requirements.txt` then `python note/build_note.py --results reproduced --team "..."` after `python run_all.py` (needs Times New Roman and Arial fonts) |
 | `dashboards/report.html`, `dashboards/stage2_report.html` | Stage 1 and Stage 2-lite dashboards; open in a browser |
 | `derived/kalshi_liquidity_t0.csv`, `derived/note_inputs.json` | Kalshi volume and spreads at t0 per release, and the median index level on release eves (used by the note) |
+| `derived/release_vix.csv` | Cboe VIX close before and on each release day (risk reporting) |
 
 ## Limitations
 

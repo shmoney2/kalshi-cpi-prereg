@@ -44,7 +44,7 @@ python stage2_lite.py run
 python track_report.py --table results/event_table.csv --stage2 results --out results
 ```
 
-To refresh `derived/`, copy `results/event_table.csv`, `results/distributions.json` and `data/releases.csv` into it, keep only release-eve rows of `data/vix1d_daily.csv` in `derived/vix1d_release_eves.csv`, then run `python run_all.py --write-expected results`.
+To refresh `derived/`, run `python make_derived.py` (it copies the event table, distributions and release list, and writes the per-release VIX1D, VIX, Kalshi-liquidity and median-index-level files), then `python run_all.py --write-expected results`.
 
 ## Notes
 

@@ -1,4 +1,18 @@
 {
+ "risk.beta[Absolute SPY return (%)]": -0.5509600055719156,
+ "risk.beta[SPY release-day return (%)]": 0.031603428075755065,
+ "risk.beta[VIX change on release day (pts)]": 0.053677327959948944,
+ "risk.beta[VIX1D on release eve (pts)]": 0.02728890181365468,
+ "risk.max_loss_count": 3,
+ "risk.regime[2022].total_return_pct": -2.7246668613852165,
+ "risk.regime[2023 to 2026].total_return_pct": 6.4573242584280655,
+ "risk.regime[VIX above 17.7 (median)].total_return_pct": 2.1217373250795424,
+ "risk.regime[VIX at or below 17.7].total_return_pct": 1.4051655752720382,
+ "risk.simple_beta": 0.007761052584092781,
+ "risk.t[Absolute SPY return (%)]": -3.2841481030708106,
+ "risk.t[SPY release-day return (%)]": 0.18416230168602443,
+ "risk.t[VIX change on release day (pts)]": 0.5204567719105824,
+ "risk.t[VIX1D on release eve (pts)]": 3.4901702163428263,
  "stage1.c": -1.6238088117243068,
  "stage1.c_ex2022": 4.388002793852413,
  "stage1.ci90_high": 0.2948057054578118,
@@ -98,5 +112,5 @@
  "track.t[Student-t, 4 df|6%].total_return_pct": -4.187790547349691,
  "track.t[Student-t, 6 df|3%].total_return_pct": -0.21039130192865851,
  "track.t[Student-t, 6 df|6%].total_return_pct": -1.489734973692014,
- "track.test_count_total": 67
+ "track.test_count_total": 76
 }

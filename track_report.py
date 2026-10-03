@@ -8,6 +8,8 @@ Reported only; nothing here feeds a decision rule.
   2. Post-hoc pricing sensitivity: the butterfly repriced under Student-t distributions (6 and 4
      degrees of freedom) scaled to VIX1D's variance.
   3. A count of every test, variant, strategy and cost level run across both stages.
+  4. Risk reporting (always sell, 3% cost): factor exposure, regime results, stress scenarios and exposure
+     limits (Deviations, 2026-10-03, risk reporting additions).
 
   python track_report.py --table results/event_table.csv --stage2 results --out results
 """
@@ -24,6 +26,7 @@ from scipy.special import gammaln
 from scipy.stats import t as student_t
 
 import sensitivity_test as s1
+from common import ols_hc3
 from stage2_lite import RISK_PER_EVENT, WING_MULT, fly_pnl
 
 OOS_SHARE = 0.20
@@ -162,6 +165,85 @@ def t_sensitivity(ev):
     return rows
 
 
+# ---------------------------------------------------------------- risk reporting
+EXPOSURE_LIMITS = [
+    "One position at a time: each butterfly is opened on the release eve and expires the next day, so positions never overlap.",
+    "Maximum loss per release: 1% of capital, fixed by the wings; no position is added or rolled.",
+    "Gross risk: at most 12 releases a year, so at most 12% of capital at risk in a year.",
+    "Size rules set in advance: halve size after a 6% drawdown from peak, stop trading at 10%.",
+    "Calendar: skip any release whose date moves after the position is planned.",
+]
+HALVE_AT, STOP_AT = 0.06, 0.10
+
+
+def regime_stats(rets):
+    r = np.asarray(rets)
+    return {"n": int(len(r)), "mean_return_pct": float(100 * r.mean()),
+            "total_return_pct": float(100 * (np.prod(1 + r) - 1)), "worst_pct": float(100 * r.min()),
+            "hit_rate": float((r > 0).mean())}
+
+
+def losses_to_rules(risk=RISK_PER_EVENT):
+    """Consecutive maximum losses needed to reach the halve-size rule, then the stop rule at half size."""
+    eq, k = 1.0, 0
+    while 1 - eq < HALVE_AT:
+        eq *= 1 - risk; k += 1
+    m = 0
+    while 1 - eq < STOP_AT:
+        eq *= 1 - risk / 2; m += 1
+    return k, k + m
+
+
+def longest_run(mask):
+    best = cur = 0
+    for v in mask:
+        cur = cur + 1 if v else 0
+        best = max(best, cur)
+    return best
+
+
+def risk_report(ev, release_vix, cost=0.03):
+    ev = ev.sort_values("release_date").reset_index(drop=True)
+    rv = release_vix.set_index("release_date")
+    ev = ev.join(rv[["vix_release_close"]], on="release_date")
+    rets = np.array([trade_record(s, r, cost)["ret"] for s, r in zip(ev["sigma_implied"], ev["r_close"])])
+    y = 100 * rets
+    dvix = (ev["vix_release_close"] - ev["vix_prev"]).to_numpy(float)
+    X = np.column_stack([np.ones(len(ev)), ev["r_close"], ev["r_close"].abs(), dvix, ev["vix1d_eve"]])
+    names = ["const", "SPY release-day return (%)", "Absolute SPY return (%)", "VIX change on release day (pts)",
+             "VIX1D on release eve (pts)"]
+    fit = ols_hc3(y, X, names)
+    simple = ols_hc3(y, X[:, :2], names[:2])
+    factors = [{"factor": n, "beta": float(fit["beta"][n]), "se": float(fit["se"][n]), "t": float(fit["t"][n])}
+               for n in names[1:]]
+
+    year = ev["release_date"].str[:4].astype(int)
+    vmed = float(ev["vix_prev"].median())
+    regimes = [{"regime": "2022", **regime_stats(rets[year == 2022])},
+               {"regime": "2023 to 2026", **regime_stats(rets[year > 2022])},
+               {"regime": f"VIX above {vmed:.1f} (median)", **regime_stats(rets[ev["vix_prev"] > vmed])},
+               {"regime": f"VIX at or below {vmed:.1f}", **regime_stats(rets[ev["vix_prev"] <= vmed])}]
+
+    max_loss = np.isclose(rets, -RISK_PER_EVENT)
+    worst = ev.assign(ret_pct=y).nsmallest(5, "ret_pct")
+    sig = float(ev["sigma_implied"].median())
+    k_halve, k_stop = losses_to_rules()
+    p = float(max_loss.mean())
+    scenarios = {
+        "worst_releases": [{"release_date": r.release_date, "spy_return_pct": float(r.r_close),
+                            "move_ratio": float(r.move_ratio), "return_pct": float(r.ret_pct)} for r in worst.itertuples()],
+        "shock_moves": [{"move_sd": k, "return_pct": float(100 * fly_pnl(sig, k * sig, cost_frac=cost)["ret"])}
+                        for k in (3, 4, 5)],
+        "max_loss_share": p, "max_loss_count": int(max_loss.sum()),
+        "longest_losing_run": longest_run(rets < 0), "longest_max_loss_run": longest_run(max_loss),
+        "losses_to_halve": k_halve, "losses_to_stop": k_stop,
+        "prob_run_to_halve_iid": p ** k_halve,
+    }
+    return {"cost": cost, "n": int(len(ev)), "factors": factors, "r2": float(fit["r2"]),
+            "simple_beta": float(simple["beta"][names[1]]), "simple_beta_se": float(simple["se"][names[1]]),
+            "regimes": regimes, "scenarios": scenarios, "exposure_limits": EXPOSURE_LIMITS}
+
+
 # ---------------------------------------------------------------- test count
 TEST_COUNT = [
     # stage, category, item, specifications, used for a decision
@@ -185,6 +267,9 @@ TEST_COUNT = [
     ("Post hoc", "Track rule", "Stage 1 primary model, in-sample and out-of-sample fits (each with permutation p)", 2, "no"),
     ("Post hoc", "Track rule", "Stage 2 strategy x period x cost cells (7 x 2 x 2), six metrics each", 28, "no"),
     ("Post hoc", "Sensitivity", "Butterfly pricing under Student-t (6 and 4 df) at 3% and 6% costs, always sell", 4, "no"),
+    ("Post hoc", "Risk", "Factor exposure of always-sell returns (four-factor regression and SPY beta)", 2, "no"),
+    ("Post hoc", "Risk", "Regime results (2022, 2023 to 2026, VIX above and below median)", 4, "no"),
+    ("Post hoc", "Risk", "Stress scenarios (worst releases, 3 to 5 SD shocks, loss runs against the size rules)", 3, "no"),
 ]
 
 
@@ -199,6 +284,8 @@ def main():
     ap.add_argument("--table", default="results/event_table.csv")
     ap.add_argument("--stage2", default="results", help="folder with stage2_events.csv and stage2_results.json")
     ap.add_argument("--out", default="results")
+    ap.add_argument("--release-vix", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "derived",
+                                                          "release_vix.csv"))
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -210,8 +297,9 @@ def main():
     st2, oos = stage2_split(ev, strategies)
     equity_figure(ev, strategies, oos, os.path.join(args.out, "stage2_equity_oos.png"))
     tsens = t_sensitivity(ev.sort_values("release_date"))
+    risk = risk_report(ev, pd.read_csv(args.release_vix, dtype={"release_date": str}))
     counts, total = test_count_table()
-    res = {"stage1_split": st1, "stage2_split": st2, "t_sensitivity": tsens,
+    res = {"stage1_split": st1, "stage2_split": st2, "t_sensitivity": tsens, "risk": risk,
            "test_count": counts, "test_count_total": total,
            "settings": {"oos_share": OOS_SHARE, "releases_per_year": RELEASES_PER_YEAR, "costs": COSTS, "t_dofs": T_DOFS}}
     with open(os.path.join(args.out, "track_results.json"), "w") as fh:
@@ -247,6 +335,27 @@ def main():
           "| Cost | Pricing | Trades | Mean return per trade | Total return |", "| --- | --- | --- | --- | --- |"]
     L += [f"| {r['cost']:.0%} | {r['pricing']} | {r['trades']} | {r['mean_return_pct']:.3f}% | {r['total_return_pct']:.2f}% |"
           for r in tsens]
+    sc = risk["scenarios"]
+    L += ["", f"## Risk (always sell, {risk['cost']:.0%} entry cost, {risk['n']} releases; reported only)", "",
+          "Factor exposure: OLS with HC3 errors of the per-release return (% of capital).", "",
+          "| Factor | Beta | SE | t |", "| --- | --- | --- | --- |"]
+    L += [f"| {r['factor']} | {r['beta']:.3f} | {r['se']:.3f} | {r['t']:.2f} |" for r in risk["factors"]]
+    L += [f"| R-squared | {risk['r2']:.2f} | | |", "",
+          f"SPY beta alone: {risk['simple_beta']:.3f} (SE {risk['simple_beta_se']:.3f}).", "",
+          "| Regime | n | Mean return | Total | Worst | Hit rate |", "| --- | --- | --- | --- | --- | --- |"]
+    L += [f"| {r['regime']} | {r['n']} | {r['mean_return_pct']:.3f}% | {r['total_return_pct']:.2f}% | "
+          f"{r['worst_pct']:.2f}% | {r['hit_rate']:.0%} |" for r in risk["regimes"]]
+    L += ["", "Worst releases: " + "; ".join(f"{w['release_date']} (SPY {w['spy_return_pct']:+.2f}%, "
+                                               f"{w['move_ratio']:.1f} implied SD, {w['return_pct']:.2f}%)"
+                                               for w in sc["worst_releases"]),
+          "Shock moves at the median release: " + ", ".join(f"{s['move_sd']} SD -> {s['return_pct']:.2f}%"
+                                                            for s in sc["shock_moves"]),
+          f"Maximum losses: {sc['max_loss_count']} of {risk['n']} releases ({sc['max_loss_share']:.0%}); longest losing "
+          f"run {sc['longest_losing_run']}, longest run of maximum losses {sc['longest_max_loss_run']}. "
+          f"{sc['losses_to_halve']} consecutive maximum losses trigger the halve-size rule and {sc['losses_to_stop']} the "
+          f"stop rule; at the historical maximum-loss rate, {sc['losses_to_halve']} in a row has probability "
+          f"{sc['prob_run_to_halve_iid']:.1e} if releases are independent.", "",
+          "Exposure limits:"] + [f"- {x}" for x in risk["exposure_limits"]]
     L += ["", "## Every test, variant, strategy and cost level run", "",
           "| Stage | Category | Item | Specifications | Used for a decision |", "| --- | --- | --- | --- | --- |"]
     L += [f"| {r['stage']} | {r['category']} | {r['item']} | {r['specifications']} | {r['decision']} |" for r in counts]

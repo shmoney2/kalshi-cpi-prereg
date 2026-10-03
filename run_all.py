@@ -61,6 +61,13 @@ def headline(folder):
     for r in tr["t_sensitivity"]:
         h[f"track.t[{r['pricing']}|{r['cost']:.0%}].total_return_pct"] = r["total_return_pct"]
     h["track.test_count_total"] = tr["test_count_total"]
+    rk = tr["risk"]
+    for r in rk["factors"]:
+        h[f"risk.beta[{r['factor']}]"], h[f"risk.t[{r['factor']}]"] = r["beta"], r["t"]
+    h["risk.simple_beta"] = rk["simple_beta"]
+    for r in rk["regimes"]:
+        h[f"risk.regime[{r['regime']}].total_return_pct"] = r["total_return_pct"]
+    h["risk.max_loss_count"] = rk["scenarios"]["max_loss_count"]
     return h
 
 

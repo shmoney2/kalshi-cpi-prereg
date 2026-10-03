@@ -57,7 +57,17 @@ def test_track_report_maths():
     assert abs(m["ann_return_pct"] - 100 * 12 * 0.01) < 1e-9 and m["max_drawdown_pct"] == 0.0
 
 
+def test_risk_helpers():
+    from track_report import longest_run, losses_to_rules, regime_stats
+    k_halve, k_stop = losses_to_rules(0.01)
+    assert (k_halve, k_stop) == (7, 14)                          # 1 - 0.99**7 = 6.8%; then 7 half-size losses to 10%
+    assert 1 - 0.99 ** 6 < 0.06 <= 1 - 0.99 ** 7
+    assert longest_run([True, True, False, True, True, True, False]) == 3 and longest_run([]) == 0
+    s = regime_stats([0.01, -0.01, 0.02])
+    assert s["n"] == 3 and abs(s["hit_rate"] - 2 / 3) < 1e-12 and s["worst_pct"] == -1.0
+
+
 if __name__ == "__main__":
     test_shutdown_releases_excluded(); test_fly_pricing(); test_flags_use_only_the_past(); test_permutation_detects_a_perfect_filter()
-    test_track_report_maths()
+    test_track_report_maths(); test_risk_helpers()
     print("stage 2 checks passed")

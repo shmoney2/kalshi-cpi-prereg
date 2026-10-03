@@ -40,6 +40,7 @@ TEAM_PLACEHOLDER = "[TEAM NAMES]"
 MAIN_PAGE_LIMIT = 5
 MIN_FONT_PT = 11.0
 BODY_PT = 11
+FIG_H = 2.2          # figure height in inches (width 6.5)
 
 SHORT = {"Always sell": "Always sell", "Kalshi filter (CPI uncertainty)": "Kalshi filter (CPI SD)",
          "Kalshi news x sensitivity": "News × sensitivity", "CPI uncertainty IQR (reported only)": "CPI IQR (rep.)",
@@ -164,7 +165,7 @@ def equity_figure(d, path, cost=0.03):
     rets = np.array([trade_record(s, r, cost)["ret"] for s, r in zip(ev["sigma_implied"], ev["r_close"])])
     x = pd.to_datetime(ev["release_date"])
     cutoff = pd.Timestamp(d["tr"]["stage2_split"]["cutoff"])
-    fig, ax = plt.subplots(figsize=(6.5, 2.65))
+    fig, ax = plt.subplots(figsize=(6.5, FIG_H))
     ax.axvspan(cutoff, x.iloc[-1] + pd.Timedelta(days=20), color="#9a9a9a", alpha=0.22, lw=0)
     ax.text(cutoff + pd.Timedelta(days=12), 0.04, "Out of\nsample", transform=ax.get_xaxis_transform(), va="bottom", fontsize=11)
     names = [n for n in d["s2"]["strategies"] if n.startswith(("Always", "Kalshi filter", "Option price"))]
@@ -176,7 +177,7 @@ def equity_figure(d, path, cost=0.03):
         ax.plot(x, 100 * (eq - 1), color=c, ls=ls, lw=lw, label=SHORT.get(n, n))
     ax.axhline(0, color="#444444", lw=0.7)
     ax.set_ylabel("Cumulative return (%)")
-    ax.legend(loc="lower left", frameon=False, fontsize=11, ncol=3, bbox_to_anchor=(0, -0.42))
+    ax.legend(loc="upper left", frameon=False, fontsize=11, ncol=3, bbox_to_anchor=(0, -0.16))
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
     fig.savefig(path, dpi=300)
@@ -237,7 +238,10 @@ def story(d, st, fig_path, team):
              "jump on the print. A premium above expected losses could persist because few investors are willing to hold "
              "jump risk, so those who do are paid for it. The trade fails if the premium only pays for the tail risk itself: "
              "sellers then break even on average once the rare large moves arrive, and no timing filter can rescue it. "
-             "Stage 2 tests exactly this failure condition."),
+             "Stage 2 tests exactly this failure condition. A Kalshi filter could add to the option price because VIX1D "
+             "prices how large a move to expect but not why: Kalshi's CPI ladder gives the distribution of the print, and "
+             "its Fed ladder shows whether a surprise would change the next policy decision, the channel that should make "
+             "some releases riskier than their implied volatility suggests."),
         para(f"<b>Pre-registration.</b> Stage 1's plan and code were frozen in commit <font name='TNR'>{c1['git_commit'][:7]}</font> "
              f"and stamped on Solana mainnet at {st1_date} UTC (<link href='{c1['explorer']}' color='blue'>transaction "
              f"{c1['signature'][:10]}…</link>) before any release-day data were downloaded. Stage 2-lite was frozen in "
@@ -352,7 +356,7 @@ def story(d, st, fig_path, team):
                 t3.append([f"{cost:.0%}", SHORT.get(name, name), lab, r["trades"], f(r["ann_return_pct"], 2, True),
                            f(r["ann_vol_pct"], 2, True), f(r["sharpe"], 2), f(r["max_drawdown_pct"], 2, True),
                            f"{r['turnover_x_capital']:.2f}×"])
-    out += [KeepTogether([Image(fig_path, width=6.5 * inch, height=6.5 * inch * 2.65 / 6.5),
+    out += [KeepTogether([Image(fig_path, width=6.5 * inch, height=FIG_H * inch),
                           para("Figure 1. Growth of capital at 3% entry cost; the shaded region is out of sample.", CAP)]),
             KeepTogether([table(t3, [0.42 * inch, 1.55 * inch, 0.42 * inch, 0.58 * inch, 0.7 * inch, 0.7 * inch, 0.58 * inch,
                                      0.66 * inch, 0.74 * inch], st, align_from=3, zebra=True),
@@ -366,22 +370,45 @@ def story(d, st, fig_path, team):
         a, b = tsens[(lab, 0.03)], tsens[(lab, 0.06)]
         tt.append([lab, f(a["mean_return_pct"], 3, True, True), f(a["total_return_pct"], 2, True, True),
                    f(b["mean_return_pct"], 3, True, True), f(b["total_return_pct"], 2, True, True)])
+    rk = tr["risk"]
+    fb = {r["factor"]: r for r in rk["factors"]}
+    fac = lambda k: fb[k]
+    sc = rk["scenarios"]
+    w3 = sc["worst_releases"][:3]
+    reg = [["Regime (always sell, 3% cost)", "n", "Mean/trade", "Total", "Worst", "Hit rate"]] + \
+          [[r["regime"].replace("2023 to 2026", "2023–2026"), r["n"], f(r["mean_return_pct"], 3, True, True),
+            f(r["total_return_pct"], 2, True, True), f(r["worst_pct"], 2, True), f"{r['hit_rate']:.0%}"] for r in rk["regimes"]]
     out += [para("Risk", H1),
             para(f"The payoff is short tail risk with a hard cap: the worst release loses the full 1% at risk, which happened "
                  f"whenever the move passed a wing. All strategies share the same {f(always_is3['max_drawdown_pct'], 2)}% "
-                 "in-sample drawdown from the burn-in releases of mid-2022, when large CPI moves came in clusters. Twelve "
-                 "events a year make the strategy's history short and lumpy. The largest risk is model risk: the proxy prices "
+                 "in-sample drawdown from the burn-in releases of mid-2022. The largest risk is model risk: the proxy prices "
                  "options with a normal distribution, while equity moves on news days have fat tails. Repricing the same "
                  "butterfly under Student-t distributions with the same variance (Table 4) turns always-sell's small profit "
-                 "into a loss, because fatter tails make the wings worth more and the credit smaller. Per-release returns are "
-                 f"almost uncorrelated with SPY's release-day return ({f(x['corr_r'], 2)}) but strongly negatively correlated "
-                 f"with its absolute size ({f(x['corr_abs_r'], 2)}): the position is short the size of the move, not the market."),
-            para("<b>Operating rules</b> for a live version (set after the backtest, not pre-registered): at most 1% of capital "
-                 "lost per release; skip any release whose date moves after the position is planned, as September 2025 did; "
-                 "halve position size after a 6% drawdown and stop trading at 10%. None would have triggered: the worst "
-                 f"drawdown of any strategy was {x['max_dd'][0.03]:.2f}% at 3% cost ({x['max_dd'][0.06]:.2f}% at 6%)."),
+                 "into a loss, because fatter tails make the wings worth more and the credit smaller."),
             KeepTogether([table(tt, [2.1 * inch, 1.05 * inch, 0.95 * inch, 1.05 * inch, 0.95 * inch], st),
-                          para(f"Table 4. Always sell, all {s2['n']} releases; post-hoc sensitivity, reported only.", CAP)])]
+                          para(f"Table 4. Always sell, all {s2['n']} releases; post-hoc sensitivity, reported only.", CAP)]),
+            para(f"<b>Factor exposure.</b> Regressing always-sell's per-release return (% of capital) on SPY's release-day "
+                 "return, its absolute value, the release-day VIX change and VIX1D on the eve (HC3 errors, R² = "
+                 f"{rk['r2']:.2f}) gives a market beta of {f(fac('SPY release-day return (%)')['beta'], 2)} (t = "
+                 f"{f(fac('SPY release-day return (%)')['t'], 1)}) and {f(fac('Absolute SPY return (%)')['beta'], 2)} per 1% "
+                 f"absolute move (t = {f(fac('Absolute SPY return (%)')['t'], 1)}); the VIX change adds nothing (t = "
+                 f"{f(fac('VIX change on release day (pts)')['t'], 1)}), and returns rise with the VIX1D level (t = "
+                 f"{f(fac('VIX1D on release eve (pts)')['t'], 1)}). Raw correlations with SPY's return and its absolute value "
+                 f"are {f(x['corr_r'], 2)} and {f(x['corr_abs_r'], 2)}: the position is short the size of the move, not the market."),
+            para(f"<b>Regimes and stress.</b> The 2022 hiking cycle was the bad regime (Table 5). The three worst releases, "
+                 + ", ".join(f"{w['release_date']} (SPY {f(w['spy_return_pct'], 2, True, True)})" for w in w3) +
+                 ", each lost the full 1%, and any move past the wings, whether 3 or 5 implied standard deviations, loses "
+                 f"exactly 1%, so a crash loss is bounded by construction. Maximum losses hit {sc['max_loss_count']} of "
+                 f"{rk['n']} releases and never twice in a row (longest losing run {sc['longest_losing_run']}); "
+                 f"{sc['losses_to_halve']} maximum losses in a row would trigger the halve-size rule and {sc['losses_to_stop']} "
+                 "the stop."),
+            KeepTogether([table(reg, [2.45 * inch, 0.4 * inch, 0.95 * inch, 0.85 * inch, 0.75 * inch, 0.8 * inch], st),
+                          para("Table 5. Always sell by regime; VIX regimes split at the median prior close.", CAP)]),
+            para("<b>Exposure limits and operating rules</b> (set after the backtest, not pre-registered): one position at a "
+                 "time, since each butterfly expires the day after it is opened; at most 1% of capital lost per release and "
+                 "12% at risk in a year; skip any release whose date moves after the position is planned, as September 2025 "
+                 "did; halve position size after a 6% drawdown and stop trading at 10%. None would have triggered: the worst "
+                 f"drawdown of any strategy was {x['max_dd'][0.03]:.2f}% at 3% cost ({x['max_dd'][0.06]:.2f}% at 6%).")]
 
     # Liquidity and capacity (1/2 page)
     out += [para("Liquidity and capacity", H1),
