@@ -80,4 +80,4 @@ Headline instead of core surprise; close-to-close returns with FOMC-day releases
 
 ## Deviations
 
-None yet.
+- **2026-10-03, reporting additions required by the competition track rules (full-sample real results had been seen).** No decision rule, threshold, variant or sample changes; the GO/NO-GO verdict stands as computed. Added, reported only: (1) an out-of-sample split by the track's mechanical rule, the most recent 20% of the sample's date span (the track rule takes the shorter of 20% of the span and two years; 20% of this roughly four-year span is under two years, so 20% binds), with the primary model fitted separately in each period; the out-of-sample period holds about 10 releases, too few to support inference. The split was defined after the full-sample results were seen, but it follows the track's fixed rule rather than any choice made here. (2) A table counting every test, variant, strategy and cost level run across both stages, including data diagnostics. (3) A reproduction script, `run_all.py`, that recomputes every headline number from committed per-release derived files.
