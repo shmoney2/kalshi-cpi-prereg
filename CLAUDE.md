@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Stage 1 of a systematic trading competition entry. The strategy sells the CPI event premium in S&P 500 options with defined risk and uses Kalshi prediction markets to decide when to stand aside. This stage is a pre-registered test of the crucial link: does Kalshi's uncertainty about the next FOMC decision ("liveness") predict how strongly the S&P 500 reacts to CPI surprises? Stage 2, which uses options data, starts only if this stage says GO.
+Stage 1 of a systematic trading competition entry. The strategy sells the CPI event premium in S&P 500 options with defined risk and uses Kalshi prediction markets to decide when to stand aside. This stage is a pre-registered test of the crucial link: does Kalshi's uncertainty about the next FOMC decision ("liveness") predict how strongly the S&P 500 reacts to CPI surprises? Stage 2 with paid options data starts only if this stage says GO; Stage 2-lite (free VIX1D data) runs after either verdict.
 
 Read `PREREGISTRATION.md` before changing anything. The competition caps the evidence score if judges find lookahead or tuning on out-of-sample data, so these rules matter.
 
@@ -65,6 +65,19 @@ Work through these with the user, one at a time, and stop to report after each s
 - Spot-check one release by hand on Kalshi's website: the ladder, the expected value, and the actual print.
 - Releases where the FOMC decides on CPI day are flagged `fomc_same_day`. The primary test is unaffected because it measures to 09:35.
 
-## Stage 2 (only after GO)
+## Stage 2 with paid options data (only after GO)
 
-Write and commit a Stage 2 pre-registration before downloading any options data. The plan: build an event-day dataset of SPXW straddle and iron-butterfly prices from Massive quotes at 15:45 ET on the day before each release, settle at the release-day close, then test whether Kalshi inputs improve forecasts of those payoffs beyond the option prices themselves. Evaluate the long and short sides separately, with real bid-ask costs.
+The GO-only rule applies to this version, which needs the paid Options Advanced tier. Write and commit a Stage 2 pre-registration before downloading any options data. The plan: build an event-day dataset of SPXW straddle and iron-butterfly prices from Massive quotes at 15:45 ET on the day before each release, settle at the release-day close, then test whether Kalshi inputs improve forecasts of those payoffs beyond the option prices themselves. Evaluate the long and short sides separately, with real bid-ask costs.
+
+## Stage 2-lite (after Stage 1, whatever the verdict)
+
+Runs after either Stage 1 verdict: after GO its primary Kalshi input is Fed liveness, after NO-GO it is core CPI uncertainty, and the always-sell baseline tests the default strategy. It uses VIX1D instead of paid option quotes; every rule is fixed in STAGE2_PREREGISTRATION.md.
+
+Order: make stage2-synth (dry run on synthetic data) -> commit -> make stamp-stage2 -> commit the
+PREREG_*.stage2 files -> make stage2-fetch -> make stage2 -> open results/stage2_report.html with
+the user -> make verify-stage2.
+
+Same guardrails as Stage 1: never change the settings at the top of stage2_lite.py or the plan
+after VIX1D data are downloaded; log any unavoidable change as a dated deviation. If VIX1D can't be
+downloaded from Massive or Cboe, ask the user to save the history CSV from Cboe's VIX1D page as
+data/vix1d_daily.csv with columns date and close.

@@ -6,6 +6,8 @@ results_synth/
 __pycache__/
 *.pyc
 .venv/
+# unpacked add-on bundle; its files are merged into the project root
+stage2_addon/
 
 # Solana keypairs: never commit
 *keypair*.json

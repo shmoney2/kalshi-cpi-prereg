@@ -62,3 +62,24 @@ verify-stamp:
 	$(PY) timestamp_solana.py verify
 
 real: market kalshi market-935 build analyze report
+
+# ---- Stage 2-lite (VIX1D; runs after either Stage 1 verdict) ----
+.PHONY: stage2-synth stamp-stage2 verify-stage2 stage2-fetch stage2
+
+stage2-synth:
+	$(PY) stage2_lite.py synth-vix1d
+	$(PY) stage2_lite.py run --table results_synth/event_table.csv --vix1d data_synth/vix1d_daily.csv --data data_synth --stage1 results_synth/results.json --out results_synth
+	$(PY) report_stage2.py --results results_synth --data data_synth
+
+stamp-stage2:
+	$(PY) timestamp_solana.py stamp --network mainnet --label stage2
+
+verify-stage2:
+	$(PY) timestamp_solana.py verify --label stage2
+
+stage2-fetch:
+	$(PY) stage2_lite.py fetch
+
+stage2:
+	$(PY) stage2_lite.py run
+	$(PY) report_stage2.py

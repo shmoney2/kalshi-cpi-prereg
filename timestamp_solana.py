@@ -9,6 +9,7 @@ the blockchain records the time, and anyone can check it.
   python timestamp_solana.py stamp --network devnet      # practice run; writes nothing
   python timestamp_solana.py stamp --network mainnet     # the real, permanent timestamp
   python timestamp_solana.py verify                      # re-hash files, fetch the transaction, compare
+  python timestamp_solana.py stamp --network mainnet --label stage2   # a second, separate stamp
 
 Writes PREREG_MANIFEST.txt (one SHA-256 per frozen file) and PREREG_STAMP.json (network,
 transaction signature, manifest hash). Commit both. A mainnet stamp costs about 0.000005 SOL.
@@ -32,9 +33,14 @@ MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 RPC = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
 EXPLORER = "https://explorer.solana.com/tx/{sig}{suffix}"
 DEFAULT_KEY = os.path.join(os.path.expanduser("~"), ".config", "solana", "fed-prereg.json")
-FROZEN_EXTRA = ["PREREGISTRATION.md", "CLAUDE.md", "Makefile", "requirements.txt"]
+FROZEN_EXTRA = ["PREREGISTRATION.md", "STAGE2_PREREGISTRATION.md", "CLAUDE.md", "Makefile", "requirements.txt"]
 NOT_FROZEN = {"timestamp_solana.py"}          # the stamping tool itself may be fixed later
 MANIFEST, STAMP = "PREREG_MANIFEST.txt", "PREREG_STAMP.json"
+
+
+def files_for(label):
+    """Stage 1 uses the plain names; a labelled stamp (e.g. stage2) gets its own pair of files."""
+    return (MANIFEST, STAMP) if not label else (f"PREREG_MANIFEST.{label}.txt", f"PREREG_STAMP.{label}.json")
 
 
 # ---------------------------------------------------------------- hashing
@@ -71,8 +77,9 @@ def git_dirty():
         return None
 
 
-def memo_for(manifest_hash, commit):
-    return f"fed-liveness-prereg v1 manifest-sha256:{manifest_hash} git:{commit or 'none'}"
+def memo_for(manifest_hash, commit, label=None):
+    tag = "fed-liveness-prereg" + (f"-{label}" if label else "")
+    return f"{tag} v1 manifest-sha256:{manifest_hash} git:{commit or 'none'}"
 
 
 # ---------------------------------------------------------------- RPC
@@ -147,17 +154,19 @@ def cmd_airdrop(args):
 
 def cmd_stamp(args):
     url = args.rpc or RPC[args.network]
+    label = getattr(args, "label", None)
+    manifest_path, stamp_path = files_for(label)
     practice = args.network == "devnet"
     if git_dirty():
         raise SystemExit("Uncommitted changes: commit everything first, so the stamp matches a commit.")
     if git_commit() is None:
         print("Note: no git commit found, so the stamp covers file hashes only. Run git init and commit first.")
-    if not practice and os.path.exists(STAMP) and not args.force:
-        raise SystemExit(f"{STAMP} already exists. Re-stamping means the plan changed: log a deviation "
+    if not practice and os.path.exists(stamp_path) and not args.force:
+        raise SystemExit(f"{stamp_path} already exists. Re-stamping means the plan changed: log a deviation "
                          "in PREREGISTRATION.md, then rerun with --force.")
     text = manifest_text(frozen_files())
     mhash, commit = text_sha256(text), git_commit()
-    memo = memo_for(mhash, commit)
+    memo = memo_for(mhash, commit, label)
     kp = load_keypair(args.keypair)
     blockhash = rpc(url, "getLatestBlockhash", [{"commitment": "finalized"}])["value"]["blockhash"]
     import base64
@@ -180,23 +189,24 @@ def cmd_stamp(args):
         print(f"Practice stamp on devnet: {EXPLORER.format(sig=sig, suffix=suffix)}\n"
               "Nothing was written. When ready, run `make stamp` for the real mainnet timestamp.")
         return
-    with open(MANIFEST, "w") as fh:
+    with open(manifest_path, "w") as fh:
         fh.write(text)
     stamp = {"network": args.network, "signature": sig, "manifest_sha256": mhash, "git_commit": commit,
              "memo": memo, "signer": str(kp.pubkey()), "sent_at_utc": datetime.now(timezone.utc).isoformat(),
              "explorer": EXPLORER.format(sig=sig, suffix=suffix)}
-    with open(STAMP, "w") as fh:
+    with open(stamp_path, "w") as fh:
         json.dump(stamp, fh, indent=2)
     print(f"Stamped on {args.network}: {stamp['explorer']}\n"
-          f"Now commit {MANIFEST} and {STAMP}. Do this before downloading any real data.")
+          f"Now commit {manifest_path} and {stamp_path}. Do this before downloading the data this plan covers.")
 
 
 def cmd_verify(args):
-    stamp = json.load(open(STAMP))
-    recorded = open(MANIFEST).read()
+    manifest_path, stamp_path = files_for(getattr(args, "label", None))
+    stamp = json.load(open(stamp_path))
+    recorded = open(manifest_path).read()
     ok = True
     if text_sha256(recorded) != stamp["manifest_sha256"]:
-        print(f"FAIL: {MANIFEST} does not match the hash in {STAMP}.")
+        print(f"FAIL: {manifest_path} does not match the hash in {stamp_path}.")
         ok = False
     expected = dict(line.split("  ", 1)[::-1] for line in recorded.strip().splitlines())
     expected = {k.strip(): v for k, v in expected.items()}
@@ -240,7 +250,8 @@ def main():
     st.add_argument("--keypair", default=DEFAULT_KEY)
     st.add_argument("--rpc", help="custom RPC URL, e.g. from a sponsor's RPC provider")
     st.add_argument("--force", action="store_true")
-    vf = sub.add_parser("verify"); vf.add_argument("--rpc")
+    st.add_argument("--label", help="separate stamp for a later plan, e.g. stage2")
+    vf = sub.add_parser("verify"); vf.add_argument("--rpc"); vf.add_argument("--label")
     args = ap.parse_args()
     {"manifest": cmd_manifest, "keygen": cmd_keygen, "airdrop": cmd_airdrop,
      "stamp": cmd_stamp, "verify": cmd_verify}[args.cmd](args)
