@@ -67,6 +67,8 @@ Work through these with the user, one at a time, and stop to report after each s
 
 ## Stage 2 with paid options data (only after GO)
 
+**Deviation, 2026-10-03 (after Stage 1 NO-GO and Stage 2-lite results were seen):** the user approved one exception, a pre-registered liquidity measurement (`LIQUIDITY_PREREGISTRATION.md`, `liquidity_measure.py`) that downloads SPXW quotes and volume for release eves to measure entry cost, depth and capacity. It computes no returns and fetches no release-day prices. Stamp it with `--label liquidity` before running `liquidity_measure.py fetch`. The GO-only rule still applies to any return analysis on options data.
+
 The GO-only rule applies to this version, which needs the paid Options Advanced tier. Write and commit a Stage 2 pre-registration before downloading any options data. The plan: build an event-day dataset of SPXW straddle and iron-butterfly prices from Massive quotes at 15:45 ET on the day before each release, settle at the release-day close, then test whether Kalshi inputs improve forecasts of those payoffs beyond the option prices themselves. Evaluate the long and short sides separately, with real bid-ask costs.
 
 ## Stage 2-lite (after Stage 1, whatever the verdict)

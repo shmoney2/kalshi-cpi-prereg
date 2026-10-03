@@ -33,7 +33,8 @@ MEMO_PROGRAM = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
 RPC = {"devnet": "https://api.devnet.solana.com", "mainnet": "https://api.mainnet-beta.solana.com"}
 EXPLORER = "https://explorer.solana.com/tx/{sig}{suffix}"
 DEFAULT_KEY = os.path.join(os.path.expanduser("~"), ".config", "solana", "fed-prereg.json")
-FROZEN_EXTRA = ["PREREGISTRATION.md", "STAGE2_PREREGISTRATION.md", "CLAUDE.md", "Makefile", "requirements.txt"]
+FROZEN_EXTRA = ["PREREGISTRATION.md", "STAGE2_PREREGISTRATION.md", "LIQUIDITY_PREREGISTRATION.md", "CLAUDE.md",
+                "Makefile", "requirements.txt"]
 NOT_FROZEN = {"timestamp_solana.py"}          # the stamping tool itself may be fixed later
 MANIFEST, STAMP = "PREREG_MANIFEST.txt", "PREREG_STAMP.json"
 

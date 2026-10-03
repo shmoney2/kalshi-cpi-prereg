@@ -67,7 +67,30 @@ def test_risk_helpers():
     assert s["n"] == 3 and abs(s["hit_rate"] - 2 / 3) < 1e-12 and s["worst_pct"] == -1.0
 
 
+def test_liquidity_helpers():
+    from datetime import date
+    from liquidity_measure import capacity, choose_atm, fly_metrics, quote_at, spxw_ticker, wing_strikes
+    assert spxw_ticker(date(2024, 6, 21), "c", 5500) == "O:SPXW240621C05500000"
+    assert spxw_ticker(date(2022, 7, 13), "P", 3790) == "O:SPXW220713P03790000"
+    qs = [{"sip_timestamp": 10, "bid_price": 1.0, "ask_price": 1.2, "bid_size": 5, "ask_size": 7},
+          {"sip_timestamp": 20, "bid_price": 0.0, "ask_price": 1.3, "bid_size": 0, "ask_size": 7},   # one-sided: ignored
+          {"sip_timestamp": 30, "bid_price": 1.1, "ask_price": 1.3, "bid_size": 9, "ask_size": 4}]
+    assert quote_at(qs, 25) == (1.0, 1.2, 5, 7) and quote_at(qs, 30) == (1.1, 1.3, 9, 4) and quote_at(qs, 5) is None
+    assert choose_atm({5490: 30.0, 5495: 27.0, 5500: 24.0}, {5490: 21.0, 5495: 24.5, 5500: 28.0}) == 5495
+    assert choose_atm({5490: 1.0}, {5495: 1.0}) is None
+    assert wing_strikes(5500, 51.0) == (5400, 5600, 100)               # 2 x 51 = 102 -> nearest 5 = 100
+    assert wing_strikes(5500, 1.0)[2] == 5                              # never narrower than one strike
+    legs = {"call_atm": (24.0, 25.0, 10, 12), "put_atm": (23.0, 24.0, 8, 9),
+            "call_wing": (1.0, 1.4, 50, 40), "put_wing": (1.5, 1.9, 30, 20)}
+    fm = fly_metrics(legs)
+    assert abs(fm["straddle_mid"] - 48.0) < 1e-12 and abs(fm["credit_mid"] - (48.0 - 1.2 - 1.7)) < 1e-12
+    assert abs(fm["crossing_pts"] - (0.5 + 0.5 + 0.2 + 0.2)) < 1e-12 and fm["min_top_size"] == 8
+    assert abs(fm["assumed_cost_pts"] - 0.03 * 48.0) < 1e-12
+    cap = capacity(1234, 55.0)
+    assert cap["contracts"] == 123 and cap["max_loss_usd_per_fly"] == 5500.0 and cap["capital_usd"] == 123 * 5500.0 / 0.01
+
+
 if __name__ == "__main__":
     test_shutdown_releases_excluded(); test_fly_pricing(); test_flags_use_only_the_past(); test_permutation_detects_a_perfect_filter()
-    test_track_report_maths(); test_risk_helpers()
+    test_track_report_maths(); test_risk_helpers(); test_liquidity_helpers()
     print("stage 2 checks passed")
