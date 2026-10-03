@@ -1,0 +1,6 @@
+{
+ "stage2_releases": 50,
+ "median_spy_close_on_release_eves": 539.5,
+ "spx_approx_multiplier": 10.0,
+ "note": "SPX approximated as 10 x SPY close on the trading day before each Stage 2 release; derived from Massive SPY daily bars."
+}

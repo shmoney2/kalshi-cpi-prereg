@@ -1,0 +1,4 @@
+-r ../requirements.txt
+reportlab>=4.0
+pypdf>=4.0
+pdfplumber>=0.11

@@ -66,6 +66,9 @@ Files changed after a stamp are listed; each change is either a data-plumbing fi
 | `timestamp_solana.py` | Solana timestamping and verification |
 | `cpi_release_dates.csv` | Official BLS CPI release calendar |
 | `CLAUDE.md` | Guardrails and checklist used with Claude Code |
+| `note/pricing_the_print.pdf` | The quant note; rebuild with `pip install -r note/requirements.txt` then `python note/build_note.py --results reproduced --team "..."` after `python run_all.py` (needs Times New Roman and Arial fonts) |
+| `dashboards/report.html`, `dashboards/stage2_report.html` | Stage 1 and Stage 2-lite dashboards; open in a browser |
+| `derived/kalshi_liquidity_t0.csv`, `derived/note_inputs.json` | Kalshi volume and spreads at t0 per release, and the median index level on release eves (used by the note) |
 
 ## Limitations
 
