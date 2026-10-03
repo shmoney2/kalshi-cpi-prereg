@@ -1,66 +1,75 @@
-# Fed-liveness sensitivity test
+# Kalshi signals for selling CPI-day volatility: a pre-registered test
 
-Tests whether Kalshi's odds on the next FOMC decision predict how strongly the S&P 500 reacts to CPI surprises. The hypotheses and the go/no-go rule are fixed in `PREREGISTRATION.md`. `CLAUDE.md` tells Claude Code how to run the project safely.
+Two pre-registered, Solana-timestamped tests of whether Kalshi prediction markets help decide when to sell the CPI event premium in S&P 500 options.
 
-## Open it in Claude Code
+- **Stage 1** (`PREREGISTRATION.md`): does Kalshi's uncertainty about the next FOMC decision ("liveness") predict how strongly the S&P 500 reacts to CPI surprises? **Verdict: NO-GO** (49 releases, July 2022 to September 2026).
+- **Stage 2-lite** (`STAGE2_PREREGISTRATION.md`): using VIX1D as the option price, does a Kalshi filter pick out the releases where selling loses? **Verdict: no evidence that Kalshi improved the decision** (50 releases).
+
+Both plans log every deviation with its date and whether results had been seen.
+
+## Reproduce every headline number
+
+Works on Windows, macOS and Linux with Python 3.12 or later (tested on 3.14). No API key and no downloads are needed.
 
 ```bash
-cd fed_sensitivity
-claude
+pip install -r requirements.txt
+python run_all.py
 ```
 
-Then ask: "Read CLAUDE.md and walk me through the first-session checklist. Stop after each step."
+`run_all.py` reruns the Stage 1 test, the Stage 2-lite test and the track reporting additions (out-of-sample split, pricing sensitivity, count of every test run) from the per-release files in `derived/`. It then checks 100 headline numbers against `derived/headline_numbers.json` and writes the summaries and figures to `reproduced/`:
 
-## Where the data come from
+| Output | Contents |
+| --- | --- |
+| `reproduced/summary.md` | Stage 1: primary model, decision conditions, robustness, mechanism, placebo |
+| `reproduced/stage2_summary.md` | Stage 2-lite: event premium, decision checks, every strategy |
+| `reproduced/track_summary.md` | Out-of-sample split, Student-t pricing sensitivity, test count |
+| `reproduced/stage2_equity_oos.png` | Strategy equity curves with the out-of-sample period shaded |
 
-| Data | Source | Needs | Used for |
-| --- | --- | --- | --- |
-| CPI and core CPI forecast ladders, actual prints | Kalshi public API | Nothing (no key) | Surprise, CPI uncertainty |
-| Odds for the next Fed meeting | Kalshi public API | Nothing | Liveness (the key input) |
-| S&P 500 daily closes and 09:35 level | Massive (formerly Polygon.io), `SPY` daily and minute bars, plus SPY dividends | Stocks data in the Massive plan | Market reaction |
-| VIX daily close | Massive `I:VIX`, or Cboe's free VIX history | Nothing for the Cboe file | Control |
-| Economists' consensus (optional) | Bloomberg terminal or similar, saved as `data/consensus.csv` | Access | Consensus-gap test |
-| Pre-registration timestamp | Solana mainnet memo transaction | About 0.000005 SOL | Proof the plan predates the results |
-| SPX option quotes (Stage 2 only) | Massive options quotes | Options Advanced tier | Straddle prices |
+## Committed derived data
 
-Webull isn't needed for research; it may matter later for paper trading.
+| File | Contents |
+| --- | --- |
+| `derived/event_table.csv` | One row per CPI release: Kalshi distribution statistics, surprises, liveness, SPY returns (prior close to 09:35 and to the close), VIX |
+| `derived/distributions.json` | Kalshi probability distributions per release and snapshot |
+| `derived/releases.csv` | Release dates, Kalshi events, actual prints and snapshot times |
+| `derived/vix1d_release_eves.csv` | VIX1D close on the trading day before each release (Cboe) |
+| `derived/headline_numbers.json` | The numbers `run_all.py` must reproduce |
+
+No raw market data or API keys are committed. Rebuilding `derived/` from the original sources is documented in `DATA.md`.
+
+## Verify the timestamps
+
+Each plan's SHA-256 manifest is recorded in a Solana mainnet memo transaction (`PREREG_STAMP.json` and `PREREG_STAMP.stage2.json`). To check them against the chain (needs internet, no key):
+
+```bash
+python timestamp_solana.py verify                  # Stage 1
+python timestamp_solana.py verify --label stage2   # Stage 2-lite
+```
+
+Files changed after a stamp are listed; each change is either a data-plumbing fix committed with a test or a logged deviation.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `PREREGISTRATION.md` | Hypotheses, variables, decision rule, power. Commit before touching real data. |
-| `CLAUDE.md` | Context, guardrails and checklist for Claude Code. |
-| `Makefile` | One-word commands for every step. |
-| `kalshi_fetch.py` | Kalshi ladders, release dates, actual prints and snapshots. |
-| `massive_fetch.py` | Plan access check; SPY and VIX data. |
-| `build_dataset.py` | `event_table.csv` and `distributions.json`, one entry per CPI release. |
-| `sensitivity_test.py` | The pre-registered test; writes `summary.md`, `results.json` and a figure. |
-| `report.py` | `report.html`, an interactive dashboard to review results together. |
-| `power_sim.py` | False-positive rate and power of the decision rule. |
-| `make_synthetic.py` | Fake data with a planted effect, for testing. |
-| `test_offline.py` | Offline checks of all parsing logic. |
-| `timestamp_solana.py` | Timestamps the frozen plan on Solana and verifies it later. |
-| `common.py` | Shared helpers. |
-| `examples/` | Output from a synthetic run. |
+| `PREREGISTRATION.md`, `STAGE2_PREREGISTRATION.md` | The frozen plans, with dated deviations and disclosures |
+| `run_all.py` | Reproduces every headline number from `derived/` |
+| `kalshi_fetch.py`, `massive_fetch.py` | Data download (see `DATA.md`) |
+| `build_dataset.py` | Builds `event_table.csv` and `distributions.json` |
+| `sensitivity_test.py` | Stage 1 pre-registered test |
+| `stage2_lite.py` | Stage 2-lite: VIX1D download and pre-registered test |
+| `track_report.py` | Out-of-sample split, pricing sensitivity, test count (reported only) |
+| `report.py`, `report_stage2.py` | HTML dashboards |
+| `power_sim.py` | Power and false-positive rate of the Stage 1 decision rule |
+| `make_synthetic.py` | Synthetic data with a planted effect, for dry runs |
+| `test_offline.py`, `test_stage2.py` | Offline checks |
+| `timestamp_solana.py` | Solana timestamping and verification |
+| `cpi_release_dates.csv` | Official BLS CPI release calendar |
+| `CLAUDE.md` | Guardrails and checklist used with Claude Code |
 
-## Run order without Claude Code
+## Limitations
 
-```bash
-pip install -r requirements.txt
-make test && make synth                  # check everything works; open results_synth/report.html
-cp .env.example .env                     # paste your Massive key into .env
-make access                              # what your Massive plan covers
-make kalshi-probe                        # confirm Kalshi field names and find legacy tickers
-git init && git add . && git commit -m "Pre-registration"
-make keygen && make airdrop && make stamp-test   # free practice timestamp on devnet
-make stamp                               # the real timestamp; then commit PREREG_*.{txt,json}
-make market && make kalshi-smoke         # small test run; check data/releases.csv
-make real                                # full run, ending in results/report.html
-make verify-stamp                        # proof the plan predates the results
-```
-
-## Known limitations
-
-- The Kalshi and Massive downloaders follow the published API specs and pass offline tests, but were not run against the live APIs. `make kalshi-probe` and `make access` show raw responses so mismatches are quick to fix.
-- About 50 releases give limited power: a NO-GO is not proof the effect is absent. See `PREREGISTRATION.md`.
+- About 50 releases give limited power: "NO-GO" and "no evidence" do not prove the effects are absent.
+- Stage 1's liveness measure, a ladder standard deviation, partly reflects how widely Kalshi lists strikes.
+- Stage 2-lite uses VIX1D and a normal-distribution butterfly instead of traded option quotes. Repriced under fatter-tailed Student-t distributions, the always-sell strategy's small profit disappears (`reproduced/track_summary.md`).
+- The out-of-sample split was defined after the full-sample results were seen, following the competition track's mechanical rule.
