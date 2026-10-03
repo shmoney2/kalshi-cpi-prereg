@@ -1,0 +1,10 @@
+{
+  "network": "mainnet",
+  "signature": "2sDcsGVpQpKAH8joEL1C9sXXGPzT2UjMVxok41SRBGiBMBBxcq4hxbSmiM1CrgeAEpRypaFRaLRjgDevsQcsSvXe",
+  "manifest_sha256": "ea9b97ef6ec59011c8c0c20540f86dca1445eba1873b0d74b2a9ed9c52d9069e",
+  "git_commit": "02e251b6e917af7b12c4b64fc10aad5336e945b9",
+  "memo": "fed-liveness-prereg-stage2 v1 manifest-sha256:ea9b97ef6ec59011c8c0c20540f86dca1445eba1873b0d74b2a9ed9c52d9069e git:02e251b6e917af7b12c4b64fc10aad5336e945b9",
+  "signer": "GUGShfqqckEMUPUs41JMvnjbrsksWjwQBoaW6e4UsjSh",
+  "sent_at_utc": "2026-10-03T20:51:31.435289+00:00",
+  "explorer": "https://explorer.solana.com/tx/2sDcsGVpQpKAH8joEL1C9sXXGPzT2UjMVxok41SRBGiBMBBxcq4hxbSmiM1CrgeAEpRypaFRaLRjgDevsQcsSvXe"
+}
