@@ -192,6 +192,7 @@ def cmd_run(args):
         "Kalshi news x sensitivity": top_third_flags(combo),
         # reported only: CPI uncertainty as the interquartile range, less sensitive to ladder width than the SD
         "CPI uncertainty IQR (reported only)": top_third_flags(ev["core_iqr_t0"].tolist()),
+        "Fed liveness (reported only)": top_third_flags(ev["fed_sd_t0_bp"].tolist()),
         "Option price only (VIX1D)": top_third_flags(ev["sigma_implied"].tolist()),
         "VIX only": top_third_flags(ev["vix_prev"].tolist()),
     }

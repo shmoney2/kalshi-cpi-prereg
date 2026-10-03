@@ -27,6 +27,7 @@ Every rule uses only earlier releases. The first 6 releases are traded by every 
 - **Kalshi filter (primary):** skip a release when the Kalshi input is above the two-thirds point of all earlier values. The input is Fed liveness if Stage 1 said GO, and core CPI uncertainty otherwise.
 - **Kalshi news × sensitivity (variant):** the same rule on CPI uncertainty × liveness.
 - **CPI uncertainty IQR (reported only):** the same rule on the interquartile range of Kalshi's core CPI distribution at t0, which is less sensitive to ladder width than the standard deviation. It does not enter the decision rule.
+- **Fed liveness (reported only):** the same rule on Kalshi's Fed liveness at t0. It does not enter the decision rule.
 - **Option price only:** the same rule on VIX1D.
 - **VIX only:** the same rule on VIX.
 
@@ -49,7 +50,7 @@ VIX1D squared is the options market's fair variance for the day, so σ² − r²
 - About 50 releases, so power is limited, as in Stage 1.
 - These are proxies, not traded prices: there are no actual bid-ask quotes, and real straddles can be priced differently from the normal approximation because of skew and fat tails.
 - The close-to-close window includes the whole release day, not just the CPI reaction.
-- This plan was written after seeing the Stage 1 verdict. The verdict only selects which Kalshi input is primary, and both inputs are reported.
+- This plan was written after seeing the Stage 1 verdict. The verdict only selects which Kalshi input is primary; both CPI uncertainty and Fed liveness are reported.
 - Release-day returns were computed and partly shown in Stage 1: the close-to-close robustness check reported a regression result, and the Stage 1 report shows each release's move to 09:35. VIX1D had not been downloaded, so the variance premium of any release was unknown when this plan was frozen.
 - The primary input, CPI uncertainty, is the standard deviation of Kalshi's core CPI ladder. Stage 1 found that a ladder standard deviation can reflect how widely Kalshi lists strikes (far strikes quoted 0.00/0.01 add tail mass) as well as genuine uncertainty. The interquartile-range variant is reported for that reason.
 
