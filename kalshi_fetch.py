@@ -179,12 +179,27 @@ def summarize_event(rows, evening_rolls_forward=False):
             day += timedelta(days=1)
     actual = None
     for r in rows:
-        try:
-            actual = float(str(r["expiration_value"]).strip().rstrip("%"))
+        m = _NUMERIC_VALUE.fullmatch(str(r["expiration_value"]))
+        if m:
+            actual = float(m.group(1))
             break
-        except (TypeError, ValueError):
-            continue
+    if actual is None:
+        actual = actual_from_results(rows)
     return {"close_ts": close_ts, "close_et": close_et, "date": day, "actual": actual}
+
+
+_NUMERIC_VALUE = re.compile(r"\s*(-?\d*\.?\d+)\s*%?\s*")
+
+
+def actual_from_results(rows, step=0.1):
+    """Settled value implied by a "greater" ladder: above the highest yes strike, at or below the
+    lowest no strike. Used when expiration_value is not a number (KXCPICORE-26AUG reads "Above 0.2%").
+    Returns the lowest no strike when it is one grid step above the highest yes strike, else None."""
+    yes = [float(r["floor_strike"]) for r in rows if r.get("strike_type") == "greater" and r.get("result") == "yes"]
+    no = [float(r["floor_strike"]) for r in rows if r.get("strike_type") == "greater" and r.get("result") == "no"]
+    if yes and no and abs(min(no) - max(yes) - step) < 1e-9:
+        return round(min(no), 4)
+    return None
 
 
 # ---------------------------------------------------------------- candles / snapshots
@@ -225,12 +240,18 @@ def _clusters(ts_sorted, gap):
     return groups
 
 
-def summarize_candles(hourly, minute, T):
-    """Last trade, latest quotes and trailing 24h volume using only candles ending at or before T."""
+def summarize_candles(hourly, minute, T, daily=()):
+    """Last trade, latest quotes and trailing 24h volume using only candles ending at or before T.
+
+    Kalshi only emits a candle for a period with activity, so a quote left unchanged for days
+    shows up only in an older candle; daily candles over a long lookback find that standing quote.
+    """
     tagged = [(c["end_period_ts"], 1, c) for c in minute if c.get("end_period_ts") is not None]
     tagged += [(c["end_period_ts"], 60, c) for c in hourly if c.get("end_period_ts") is not None]
+    tagged += [(c["end_period_ts"], 1440, c) for c in daily if c.get("end_period_ts") is not None]
     tagged = [x for x in tagged if x[0] <= T]
-    trades = [(ts, _px(c.get("price"), "close")) for ts, _, c in tagged]
+    # trades only from minute/hourly candles: a daily candle's end time overstates how recent its trade was
+    trades = [(ts, _px(c.get("price"), "close")) for ts, p, c in tagged if p < 1440]
     trades = [x for x in trades if x[1] is not None]
     last_ts, last_px = max(trades) if trades else (None, None)
     if tagged:
@@ -246,10 +267,11 @@ def summarize_candles(hourly, minute, T):
 def market_snapshots(cl, series, ticker, times, historical):
     ts_sorted = sorted(times.values())
     hourly = fetch_candles(cl, series, ticker, ts_sorted[0] - 7 * 86_400, ts_sorted[-1], 60, historical)
+    daily = fetch_candles(cl, series, ticker, ts_sorted[0] - 120 * 86_400, ts_sorted[-1], 1440, historical)
     minute = []
     for start, end in _clusters(ts_sorted, gap=3 * 3600):
         minute += fetch_candles(cl, series, ticker, start - 90 * 60, end, 1, historical)
-    return {label: summarize_candles(hourly, minute, T) for label, T in times.items()}
+    return {label: summarize_candles(hourly, minute, T, daily) for label, T in times.items()}
 
 
 # ---------------------------------------------------------------- calendars

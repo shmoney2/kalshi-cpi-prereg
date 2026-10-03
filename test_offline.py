@@ -31,6 +31,16 @@ def test_candles():
                "price": {"close": 31}, "volume": 4}]
     assert abs(summarize_candles(legacy, [], T)["last_price"] - 0.31) < 1e-12
     assert _clusters([0, 100, 20000, 20100], 3 * 3600) == [(0, 100), (20000, 20100)]
+    # a quote left standing for 10 days appears only in a daily candle; it supplies quotes, never trades
+    daily = [{"end_period_ts": T - 10 * 86_400, "yes_bid": {"close": "0.9900"}, "yes_ask": {"close": "1.0000"},
+              "price": {"close": "0.9900"}, "volume": "0.00"},
+             {"end_period_ts": T - 3600, "yes_bid": {"close": "0.9800"}, "yes_ask": {"close": "0.9900"},
+              "price": {"close": "0.9850"}, "volume": "3.00"}]
+    s3 = summarize_candles([], [], T, daily[:1])
+    assert (s3["yes_bid"], s3["yes_ask"], s3["last_price"]) == (0.99, 1.0, None)
+    s4 = summarize_candles([], [], T, daily)
+    assert s4["yes_bid"] == 0.98 and s4["last_price"] is None and s4["vol_24h"] == 0
+    assert summarize_candles(hourly, minute, T, daily)["yes_bid"] == 0.44          # fresher candles win
 
 
 def test_strike_from_ticker():
@@ -63,6 +73,14 @@ def test_event_dates():
     assert info("2021-07-09T23:00:00Z", True)["date"] == date(2021, 7, 12)     # 19:00 ET Fri -> Mon
     assert info("2021-12-14T00:00:00Z", False)["date"] == date(2021, 12, 13)   # Fed events never roll
     assert info("2021-07-13T23:00:00Z", True, ".9%")["actual"] == 0.9
+    # non-numeric expiration_value (KXCPICORE-26AUG reads "Above 0.2%"): use the ladder's results
+    ladder = [{"ticker": f"X-T{k}", "event_ticker": "X", "close_time": "2026-09-11T12:25:00Z",
+               "expiration_value": "Above 0.2%", "result": res}
+              for k, res in [("0.1", "yes"), ("0.2", "yes"), ("0.3", "no"), ("0.4", "no")]]
+    rows = [market_row(m, "cpi_core", "KXCPICORE") for m in ladder]
+    assert summarize_event(rows, evening_rolls_forward=True)["actual"] == 0.3
+    gap = [r for r in rows if r["floor_strike"] != 0.3]                      # 0.2 yes, 0.4 no: ambiguous
+    assert summarize_event(gap, evening_rolls_forward=True)["actual"] is None
 
 
 def test_release_matching():
