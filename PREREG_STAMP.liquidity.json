@@ -1,0 +1,10 @@
+{
+  "network": "mainnet",
+  "signature": "527p6xeL4CX6xqrfrwgEbiTXUVcfaHKR1ZQ51PucDmg6h8xfqBFnGnDTX3ggLCzm2jCNpzunX9G6vViCHjGQNvJh",
+  "manifest_sha256": "946ad635c4f3e51c435b6531701b36583fba2ee3a6a58b71911bd9c5c10769e6",
+  "git_commit": "a2410694611a060e9bbaf1597fb7bdb76627d428",
+  "memo": "fed-liveness-prereg-liquidity v1 manifest-sha256:946ad635c4f3e51c435b6531701b36583fba2ee3a6a58b71911bd9c5c10769e6 git:a2410694611a060e9bbaf1597fb7bdb76627d428",
+  "signer": "GUGShfqqckEMUPUs41JMvnjbrsksWjwQBoaW6e4UsjSh",
+  "sent_at_utc": "2026-10-04T14:11:04.196187+00:00",
+  "explorer": "https://explorer.solana.com/tx/527p6xeL4CX6xqrfrwgEbiTXUVcfaHKR1ZQ51PucDmg6h8xfqBFnGnDTX3ggLCzm2jCNpzunX9G6vViCHjGQNvJh"
+}
