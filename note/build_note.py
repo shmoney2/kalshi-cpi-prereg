@@ -203,7 +203,7 @@ def story(d, st, fig_path, team):
     fly_win = float((ev["pnl_points"] > 0).mean())
     rows_by = {(r["strategy"], r["period"], r["cost"]): r for r in sp2["rows"]}
     tsens = {(r["pricing"], r["cost"]): r for r in tr["t_sensitivity"]}
-    c1, c2 = d["st1"], d["st2"]
+    c1, c2, lq = d["st1"], d["st2"], d["lq"]
     B, P, H1, H2, CAP = st["body"], st["bullet"], st["h1"], st["h2"], st["cap"]
     para = lambda t, s=B: Paragraph(t, s)
     bullet = lambda t: Paragraph(t, P, bulletText="•")
@@ -387,10 +387,11 @@ def story(d, st, fig_path, team):
     out += [para("Risk", H1),
             para(f"The payoff is short tail risk with a hard cap: the worst release loses the full 1% at risk, which happened "
                  f"whenever the move passed a wing. All strategies share the same {f(always_is3['max_drawdown_pct'], 2)}% "
-                 "in-sample drawdown from the burn-in releases of mid-2022. The largest risk is model risk: the proxy prices "
-                 "options with a normal distribution, while equity moves on news days have fat tails. Repricing the same "
-                 "butterfly under Student-t distributions with the same variance (Table 4) turns always-sell's small profit "
-                 "into a loss, because fatter tails make the wings worth more and the credit smaller."),
+                 "in-sample drawdown from the burn-in releases of mid-2022. The largest risk is model risk. The normal model is "
+                 "the pre-registered proxy; Table 4 stress-tests tail pricing with Student-t models, whose fatter tails "
+                 "make wings dearer. Real SPXW quotes put the wings much closer to the normal model, with straddles "
+                 f"and wings both below it, and crossing cost {lq['crossing_share_median']:.1%} of the straddle, not "
+                 "3%. Either way the result is flat in sample."),
             KeepTogether([table(tt, [2.1 * inch, 1.05 * inch, 0.95 * inch, 1.05 * inch, 0.95 * inch], st),
                           para(f"Table 4. Always sell, all {s2['n']} releases; post-hoc sensitivity, reported only.", CAP)]),
             para(f"<b>Factor exposure.</b> Regressing always-sell's per-release return (% of capital) on SPY's release-day "
@@ -417,7 +418,7 @@ def story(d, st, fig_path, team):
                  f"drawdown of any strategy was {x['max_dd'][0.03]:.2f}% at 3% cost ({x['max_dd'][0.06]:.2f}% at 6%).")]
 
     # Liquidity and capacity (2/3 page)
-    lq, c3 = d["lq"], d["st3"]
+    c3 = d["st3"]
     out += [para("Liquidity and capacity", H1),
             para(f"The Kalshi inputs are read, not traded, so Kalshi liquidity limits signal quality rather than capacity. At "
                  f"t0 the median 24-hour volume was about {med('cpi_core', 'vol_24h_contracts'):,.0f} contracts across the "
@@ -460,13 +461,12 @@ def story(d, st, fig_path, team):
                  "back-calculated. The out-of-sample split came after the full-sample results."),
             bullet("Fed liveness as a gauge of stock sensitivity to CPI (Stage 1 NO-GO; the sign reverses without 2022)."),
             bullet(f"A Kalshi CPI-uncertainty filter (random-skip p = {f(s2['p_perm'], 2)}); Fed liveness and IQR variants did no better than always selling."),
-            bullet("The always-sell premium under fat-tailed pricing, and in sample at a 6% entry cost."),
+            bullet("A reliable always-sell edge: flat in sample; a loss only under the Student-t stress test (see Risk)."),
             bullet("Index and futures data: the data plan had no SPX index data, and a futures reaction window was dropped because "
                    "minute data could not be exported with verifiable timestamps."),
             para("<b>Conclusion.</b> In 2022–2026 the CPI-day premium in S&amp;P 500 options looks like fair compensation for "
                  "tail risk, and Kalshi's odds do not identify the releases to avoid. We would not trade this strategy. The "
-                 "next step is Stage 2 with real SPXW prices at entry and settlement, written and stamped "
-                 "before those data are downloaded.")]
+                 "next step is Stage 2 with real SPXW prices at entry and settlement, stamped before those data are downloaded.")]
     return out
 
 
