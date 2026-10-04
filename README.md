@@ -39,11 +39,12 @@ No raw market data or API keys are committed. Rebuilding `derived/` from the ori
 
 ## Verify the timestamps
 
-Each plan's SHA-256 manifest is recorded in a Solana mainnet memo transaction (`PREREG_STAMP.json` and `PREREG_STAMP.stage2.json`). To check them against the chain (needs internet, no key):
+Each plan's SHA-256 manifest is recorded in a Solana mainnet memo transaction (`PREREG_STAMP.json`, `PREREG_STAMP.stage2.json` and `PREREG_STAMP.liquidity.json`). To check them against the chain (needs internet, no key):
 
 ```bash
-python timestamp_solana.py verify                  # Stage 1
-python timestamp_solana.py verify --label stage2   # Stage 2-lite
+python timestamp_solana.py verify                     # Stage 1
+python timestamp_solana.py verify --label stage2      # Stage 2-lite
+python timestamp_solana.py verify --label liquidity   # liquidity measurement
 ```
 
 Files changed after a stamp are listed; each change is either a data-plumbing fix committed with a test or a logged deviation.
@@ -52,13 +53,14 @@ Files changed after a stamp are listed; each change is either a data-plumbing fi
 
 | File | Purpose |
 | --- | --- |
-| `PREREGISTRATION.md`, `STAGE2_PREREGISTRATION.md` | The frozen plans, with dated deviations and disclosures |
+| `PREREGISTRATION.md`, `STAGE2_PREREGISTRATION.md`, `LIQUIDITY_PREREGISTRATION.md` | The frozen plans, with dated deviations and disclosures |
 | `run_all.py` | Reproduces every headline number from `derived/` |
 | `kalshi_fetch.py`, `massive_fetch.py` | Data download (see `DATA.md`) |
 | `build_dataset.py` | Builds `event_table.csv` and `distributions.json` |
 | `sensitivity_test.py` | Stage 1 pre-registered test |
 | `stage2_lite.py` | Stage 2-lite: VIX1D download and pre-registered test |
 | `track_report.py` | Out-of-sample split, pricing sensitivity, test count (reported only) |
+| `liquidity_measure.py` | Pre-registered SPXW entry cost, depth and capacity on release eves (no returns); `python liquidity_measure.py summarize` rebuilds the summary from `derived/liquidity_per_release.csv` without a key |
 | `report.py`, `report_stage2.py` | HTML dashboards |
 | `power_sim.py` | Power and false-positive rate of the Stage 1 decision rule |
 | `make_synthetic.py` | Synthetic data with a planted effect, for dry runs |
@@ -69,6 +71,7 @@ Files changed after a stamp are listed; each change is either a data-plumbing fi
 | `note/pricing_the_print.pdf` | The quant note; rebuild with `pip install -r note/requirements.txt` then `python note/build_note.py --results reproduced --team "..."` after `python run_all.py` (needs Times New Roman and Arial fonts) |
 | `dashboards/report.html`, `dashboards/stage2_report.html` | Stage 1 and Stage 2-lite dashboards; open in a browser |
 | `derived/kalshi_liquidity_t0.csv`, `derived/note_inputs.json` | Kalshi volume and spreads at t0 per release, and the median index level on release eves (used by the note) |
+| `derived/liquidity_per_release.csv` | Per-release SPXW entry cost, depth, capacity and 16:15 pricing ratios from the liquidity measurement (raw quotes not committed) |
 | `derived/release_vix.csv` | Cboe VIX close before and on each release day (risk reporting) |
 
 ## Limitations

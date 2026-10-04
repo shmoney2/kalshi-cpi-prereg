@@ -5,7 +5,8 @@
 
 Needs reportlab, pypdf and pdfplumber (note/requirements.txt) and Times New Roman / Arial TrueType fonts
 (Windows has them; elsewhere set NOTE_FONT_DIR to a folder with times*.ttf and arial*.ttf). Besides the
-results folder it reads derived/kalshi_liquidity_t0.csv and derived/note_inputs.json. The dashboards are
+results folder it reads derived/kalshi_liquidity_t0.csv, derived/note_inputs.json and
+derived/liquidity_per_release.csv (summarized into the results folder). The dashboards are
 not embedded; they live in dashboards/ in the repository. After building, the script checks the page count
 of the main body, the smallest font size and the margins.
 """
@@ -105,10 +106,15 @@ def load(results):
     d = {"s1": j("results.json"), "s2": j("stage2_results.json"), "tr": j("track_results.json"),
          "ev": pd.read_csv(os.path.join(results, "stage2_events.csv")),
          "st1": json.load(open(os.path.join(ROOT, "PREREG_STAMP.json"))),
-         "st2": json.load(open(os.path.join(ROOT, "PREREG_STAMP.stage2.json")))}
+         "st2": json.load(open(os.path.join(ROOT, "PREREG_STAMP.stage2.json"))),
+         "st3": json.load(open(os.path.join(ROOT, "PREREG_STAMP.liquidity.json")))}
     liq = os.path.join(ROOT, "derived", "kalshi_liquidity_t0.csv")
     d["liq"] = pd.read_csv(liq) if os.path.exists(liq) else None
     d["inputs"] = json.load(open(os.path.join(ROOT, "derived", "note_inputs.json")))
+    from liquidity_measure import summarize          # pre-registered liquidity measurement, from committed metrics
+    lpr = os.path.join(ROOT, "derived", "liquidity_per_release.csv")
+    d["lq"] = summarize(lpr, results)
+    d["lq"]["crossing_share_max"] = float(pd.read_csv(lpr)["crossing_share_of_straddle"].max())
     d["x"] = extras(d)
     return d
 
@@ -410,7 +416,8 @@ def story(d, st, fig_path, team):
                  "did; halve position size after a 6% drawdown and stop trading at 10%. None would have triggered: the worst "
                  f"drawdown of any strategy was {x['max_dd'][0.03]:.2f}% at 3% cost ({x['max_dd'][0.06]:.2f}% at 6%).")]
 
-    # Liquidity and capacity (1/2 page)
+    # Liquidity and capacity (2/3 page)
+    lq, c3 = d["lq"], d["st3"]
     out += [para("Liquidity and capacity", H1),
             para(f"The Kalshi inputs are read, not traded, so Kalshi liquidity limits signal quality rather than capacity. At "
                  f"t0 the median 24-hour volume was about {med('cpi_core', 'vol_24h_contracts'):,.0f} contracts across the "
@@ -422,11 +429,26 @@ def story(d, st, fig_path, team):
                  f"year, so capacity is unlikely to bind before the edge does. At the median release one SPX butterfly ($100 "
                  f"multiplier) can lose about {x['max_loss_pts']:.1f} index points, or ${x['max_loss_usd']:,.0f}, so risking 1% "
                  f"per release implies about ${round(x['capital_usd'], -3):,.0f} of capital per contract; XSP, one-tenth the size, "
-                 f"brings this to ${x['xsp_max_loss_usd']:,.0f} and about ${round(x['xsp_capital_usd'], -2):,.0f}. We did not measure order-book depth or real "
-                 "bid-ask spreads at 16:15 on release eves; the entry-cost assumption (3%, with 6% as a stress) stands in for "
-                 "them, and moving from 3% to 6% lowers always-sell's mean return per trade from "
+                 f"brings this to ${x['xsp_max_loss_usd']:,.0f} and about ${round(x['xsp_capital_usd'], -2):,.0f}. Moving the entry-cost assumption from 3% "
+                 "to 6% lowers always-sell's mean return per trade from "
                  f"{f(tsens[('Normal (pre-registered)', 0.03)]['mean_return_pct'], 3)}% to "
-                 f"{f(tsens[('Normal (pre-registered)', 0.06)]['mean_return_pct'], 3)}%. Real quotes are the next step.")]
+                 f"{f(tsens[('Normal (pre-registered)', 0.06)]['mean_return_pct'], 3)}%."),
+            para(f"<b>Measured SPXW costs.</b> Measured after the main results were known, under a separate plan stamped on "
+                 f"Solana before any release-eve option quotes were downloaded (<link href='{c3['explorer']}' color='blue'>transaction</link>), we read real SPXW quotes and volume from 15:45 "
+                 f"to 16:15 on each of the {lq['n_releases']} release eves. It computes no returns. "
+                 f"All four legs had usable quotes on {lq['n_usable']} eves; on the other {lq['n_releases'] - lq['n_usable']} "
+                 "the call-wing strike was never quoted, and missing quotes were not filled in. Crossing all four spreads cost "
+                 f"a median {lq['crossing_share_median']:.1%} of the straddle (90th percentile {lq['crossing_share_p90']:.1%}, "
+                 f"highest {lq['crossing_share_max']:.1%}), or {lq['crossing_pts_median']:.2f} index points against "
+                 f"{lq['assumed_cost_pts_median']:.2f} under the 3% assumption, so 3% was conservative and 6% is a remote stress. "
+                 f"Depth is the tighter limit: the thinnest top-of-book size was a median {lq['min_top_size_median']:.0f} "
+                 "contracts, so larger orders would walk the book. Trading at most 10% of the thinnest leg's eve volume "
+                 f"(median {lq['min_leg_volume_median']:,.0f} contracts) allows a median {lq['capacity_contracts_median']:.0f} "
+                 f"butterflies, about ${lq['capacity_capital_median'] / 1e6:.0f} million of capital at 1% risk, and "
+                 f"{lq['capacity_contracts_min']:.0f} on the thinnest eve. At 16:15 real straddle mids were a median "
+                 f"{lq['straddle_ratio_median']:.2f} of the normal-model price from VIX1D (IQR {lq['straddle_ratio_q25']:.2f}–"
+                 f"{lq['straddle_ratio_q75']:.2f}) and wing mids {lq['wings_ratio_median']:.2f} "
+                 f"({lq['wings_ratio_q25']:.2f}–{lq['wings_ratio_q75']:.2f}).")]
 
     # Limitations (1/2 page)
     out += [para("Limitations and what didn't work", H1),
@@ -443,8 +465,8 @@ def story(d, st, fig_path, team):
                    "minute data could not be exported with verifiable timestamps."),
             para("<b>Conclusion.</b> In 2022–2026 the CPI-day premium in S&amp;P 500 options looks like fair compensation for "
                  "tail risk, and Kalshi's odds do not identify the releases to avoid. We would not trade this strategy. The "
-                 "next step is Stage 2 with real SPXW quotes and bid-ask costs, written and stamped before those data are "
-                 "downloaded.")]
+                 "next step is Stage 2 with real SPXW prices at entry and settlement, written and stamped "
+                 "before those data are downloaded.")]
     return out
 
 
@@ -471,7 +493,8 @@ def references(st):
         "Knox, B., Londono, J. M., Samadi, M. and Vissing-Jorgensen, A. \"Equity Premium Events.\" Federal Reserve Board working paper.",
         "Lo, A. W. (2002). \"The Statistics of Sharpe Ratios.\" Financial Analysts Journal 58(4), 36–52.",
         "Massive (formerly Polygon.io). Stocks aggregates and reference dividends for SPY. https://api.massive.com",
-        "Solana mainnet memo transactions of the two pre-registrations (see Hypothesis); verifiable with "
+        "Solana mainnet memo transactions of the two pre-registrations (see Hypothesis) and the liquidity measurement "
+        "plan (see Liquidity and capacity); verifiable with "
         "timestamp_solana.py verify.",
         f"Project repository, code and derived data: {REPO}",
     ]
@@ -536,7 +559,9 @@ def appendix(d, st):
         out.append(Paragraph(t, P, bulletText="•"))
     out += [Paragraph("Logged deviations (2026-10-03, after full-sample results were seen; reporting only, no decision rule changed): "
                       "the out-of-sample split, the Student-t pricing sensitivity, the specification count and the reproduction "
-                      "script. Stage 2-lite added two reported-only filters before its stamp.", B),
+                      "script. Stage 2-lite added two reported-only filters before its stamp. The liquidity measurement (planned "
+                      "2026-10-03, stamped 2026-10-04 before any release-eve quotes were downloaded) is a logged exception to the "
+                      "rule that options data wait for a Stage 1 GO; it computes no returns.", B),
             Paragraph("F. Dashboards", H2),
             Paragraph("The interactive Stage 1 and Stage 2-lite dashboards are in the repository as dashboards/report.html and "
                       f"dashboards/stage2_report.html (<link href='{REPO}/tree/main/dashboards' color='blue'>{REPO}/tree/main/dashboards</link>). "
