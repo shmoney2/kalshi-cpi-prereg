@@ -89,6 +89,34 @@ def test_liquidity_helpers():
     cap = capacity(1234, 55.0)
     assert cap["contracts"] == 123 and cap["max_loss_usd_per_fly"] == 5500.0 and cap["capital_usd"] == 123 * 5500.0 / 0.01
 
+    # the pricing check reproduces Stage 2-lite's normal-model prices, scaled from % of index to points
+    import math
+    import pandas as pd
+    from liquidity_measure import model_prices, per_release_metrics
+    vix1d, atm, c, p = 17.0, 5500.0, 30.0, 28.0
+    fwd, sig = 5502.0, 17.0 / math.sqrt(252)
+    ref = fly_pnl(sig, 0.0, cost_frac=0.0)
+    width = ref["wing"] * fwd / 100
+    mp = model_prices(atm, c, p, width, vix1d)
+    assert abs(mp["forward"] - fwd) < 1e-12 and abs(mp["model_straddle"] - ref["straddle"] * fwd / 100) < 1e-9
+    assert abs(mp["model_wings"] - (ref["straddle"] - ref["credit"]) * fwd / 100) < 1e-9
+
+    # coverage: a release with a leg that is never quoted is excluded, not imputed
+    marks = [f"15:{m}" for m in range(45, 60)] + [f"16:{m:02d}" for m in range(16)]
+    rows = []
+    for rd, missing in (("2024-01-11", None), ("2024-02-13", "put_wing")):
+        for leg, (b, a) in {"call_atm": (24, 25), "put_atm": (23, 24), "call_wing": (1.0, 1.4), "put_wing": (1.5, 1.9)}.items():
+            for mk in marks:
+                q = (None, None) if leg == missing else (b, a)
+                rows.append({"release_date": rd, "leg": leg, "mark": mk, "bid": q[0], "ask": q[1], "bid_size": 10, "ask_size": 10})
+    vols = pd.DataFrame([{"release_date": rd, "eve": e, "leg": lg, "eve_volume": 1000.0, "atm": 4800.0, "wing_width": 100.0}
+                         for rd, e in (("2024-01-11", "2024-01-10"), ("2024-02-13", "2024-02-12"))
+                         for lg in ("call_atm", "put_atm", "call_wing", "put_wing")])
+    pr = per_release_metrics(pd.DataFrame(rows), vols, {"2024-01-10": 13.0, "2024-02-12": 14.0}).set_index("release_date")
+    assert bool(pr.loc["2024-01-11", "usable"]) and bool(pr.loc["2024-01-11", "priced_1615"])
+    assert not bool(pr.loc["2024-02-13", "usable"]) and not bool(pr.loc["2024-02-13", "priced_1615"])
+    assert pr.loc["2024-01-11", "marks"] == 31 and pr.loc["2024-02-13", "min_leg_marks"] == 0
+
 
 if __name__ == "__main__":
     test_shutdown_releases_excluded(); test_fly_pricing(); test_flags_use_only_the_past(); test_permutation_detects_a_perfect_filter()

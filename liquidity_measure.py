@@ -5,7 +5,8 @@ quotes and volume on each release eve. It computes NO returns: no release-day pr
 prices are used only to pick strikes, scale the spread and size the maximum loss.
 
   python liquidity_measure.py fetch      # quotes and volume for release eves -> data/liquidity_*.csv (gitignored)
-  python liquidity_measure.py run        # metrics -> results/liquidity_results.json, results/liquidity_summary.md
+  python liquidity_measure.py run        # per-release metrics and summary -> results/liquidity_*
+  python liquidity_measure.py summarize --per-release derived/liquidity_per_release.csv   # no key needed
 
 Every setting below is fixed in LIQUIDITY_PREREGISTRATION.md.
 """
@@ -79,6 +80,16 @@ def fly_metrics(legs: dict):
             "assumed_cost_pts": ASSUMED_COST_FRAC * straddle,
             "crossing_share_of_straddle": crossing / straddle if straddle > 0 else float("nan"),
             "min_top_size": min(s for s in sizes if s is not None) if any(s is not None for s in sizes) else None}
+
+
+def model_prices(atm: float, call_mid: float, put_mid: float, wing_width: float, vix1d: float):
+    """Normal-model straddle and wings (index points) from VIX1D, as in Stage 2-lite, at the parity forward."""
+    from scipy.stats import norm
+    fwd = atm + call_mid - put_mid
+    s = fwd * vix1d / (100 * math.sqrt(252))
+    c = wing_width / s
+    return {"forward": fwd, "model_straddle": s * math.sqrt(2 / math.pi),
+            "model_wings": 2 * (s * norm.pdf(c) - wing_width * (1 - norm.cdf(c)))}
 
 
 def capacity(min_leg_volume: float, max_loss_pts: float):
@@ -163,36 +174,74 @@ def cmd_fetch(args):
         print(f"[{i}] {expiry}: ATM {atm}, {len(rows)} snapshot rows, {m.calls} API calls so far", flush=True)
 
 
-def cmd_run(args):
-    snaps = pd.read_csv(os.path.join(args.data, "liquidity_snapshots.csv"))
-    vols = pd.read_csv(os.path.join(args.data, "liquidity_volume.csv"))
+def per_release_metrics(snaps, vols, vix1d_by_eve):
+    """One row per release eve. Missing or one-sided quotes are never imputed."""
     per = []
-    for rd, g in snaps.groupby("release_date"):
-        ok_legs = g.dropna(subset=["bid", "ask"]).query("ask > bid and bid > 0").groupby("leg")["mark"].nunique()
-        if len(ok_legs) < 4 or (ok_legs < MIN_MARKS).any():
-            per.append({"release_date": rd, "usable": False})
-            continue
+    for rd in sorted(vols["release_date"].astype(str).unique()):
+        v = vols[vols["release_date"].astype(str) == rd]
+        g = snaps[snaps["release_date"].astype(str) == rd]
+        eve = str(v["eve"].iloc[0])
+        rec = {"release_date": rd, "eve": eve, "atm_found": bool(v["atm"].notna().any()), "usable": False,
+               "priced_1615": False}
+        if not rec["atm_found"] or g.empty:
+            per.append(rec); continue
+        ok = g[[valid(b, a) for b, a in zip(g["bid"], g["ask"])]]
+        marks_per_leg = ok.groupby("leg")["mark"].nunique()
+        rec["min_leg_marks"] = int(marks_per_leg.min()) if len(marks_per_leg) == 4 else 0
+        width, atm = float(v["wing_width"].iloc[0]), float(v["atm"].iloc[0])
+        # pricing check at 16:15: all four legs must be quoted
+        last = {r.leg: r for r in ok[ok["mark"] == "16:15"].itertuples()}
+        if len(last) == 4 and eve in vix1d_by_eve:
+            mid = {k: (r.bid + r.ask) / 2 for k, r in last.items()}
+            mp = model_prices(atm, mid["call_atm"], mid["put_atm"], width, float(vix1d_by_eve[eve]))
+            rec.update({"priced_1615": True, "straddle_ratio": (mid["call_atm"] + mid["put_atm"]) / mp["model_straddle"],
+                        "wings_ratio": (mid["call_wing"] + mid["put_wing"]) / mp["model_wings"]})
+        if rec["min_leg_marks"] < MIN_MARKS:
+            per.append(rec); continue
         marks = []
-        for mark, h in g.groupby("mark"):
-            legs = {r.leg: (r.bid, r.ask, r.bid_size, r.ask_size) for r in h.itertuples() if valid(r.bid, r.ask)}
+        for mark, h in ok.groupby("mark"):
+            legs = {r.leg: (r.bid, r.ask, r.bid_size, r.ask_size) for r in h.itertuples()}
             if len(legs) == 4:
                 marks.append(fly_metrics(legs))
         mm = pd.DataFrame(marks)
-        v = vols[vols["release_date"] == rd]
-        width = float(v["wing_width"].iloc[0])
         credit = float(mm["credit_mid"].median())
         cap = capacity(float(v["eve_volume"].min()), width - credit)
-        per.append({"release_date": rd, "usable": True, "marks": int(len(mm)),
-                    "crossing_pts": float(mm["crossing_pts"].median()),
+        rec.update({"usable": True, "marks": int(len(mm)), "crossing_pts": float(mm["crossing_pts"].median()),
                     "assumed_cost_pts": float(mm["assumed_cost_pts"].median()),
                     "crossing_share_of_straddle": float(mm["crossing_share_of_straddle"].median()),
                     "min_top_size": float(mm["min_top_size"].median()),
                     "min_leg_eve_volume": float(v["eve_volume"].min()), "wing_width": width,
                     "max_loss_pts": width - credit, **cap})
-    pr = pd.DataFrame(per)
-    u = pr[pr["usable"]]
+        per.append(rec)
+    return pd.DataFrame(per)
+
+
+def cmd_run(args):
+    snaps = pd.read_csv(os.path.join(args.data, "liquidity_snapshots.csv"))
+    vols = pd.read_csv(os.path.join(args.data, "liquidity_volume.csv"))
+    v1 = pd.read_csv(os.path.join(args.derived, "vix1d_release_eves.csv"))
+    pr = per_release_metrics(snaps, vols, dict(zip(v1["date"].astype(str), v1["close"])))
+    os.makedirs(args.out, exist_ok=True)
+    path = os.path.join(args.out, "liquidity_per_release.csv")
+    pr.to_csv(path, index=False)
+    summarize(path, args.out)
+
+
+def cmd_summarize(args):
+    summarize(args.per_release, args.out)
+
+
+def summarize(per_release_csv, out):
+    pr = pd.read_csv(per_release_csv)
+    u = pr[pr["usable"].astype(bool)]
+    pz = pr[pr["priced_1615"].astype(bool)]
     q = lambda col, p: float(np.quantile(u[col], p))
-    res = {"n_releases": int(len(pr)), "n_usable": int(len(u)),
+    qp = lambda col, p: float(np.quantile(pz[col], p))
+    res = {"n_releases": int(len(pr)), "n_atm_found": int(pr["atm_found"].astype(bool).sum()), "n_usable": int(len(u)),
+           "n_priced_1615": int(len(pz)),
+           "straddle_ratio_median": qp("straddle_ratio", 0.5), "straddle_ratio_q25": qp("straddle_ratio", 0.25),
+           "straddle_ratio_q75": qp("straddle_ratio", 0.75), "wings_ratio_median": qp("wings_ratio", 0.5),
+           "wings_ratio_q25": qp("wings_ratio", 0.25), "wings_ratio_q75": qp("wings_ratio", 0.75),
            "crossing_share_median": q("crossing_share_of_straddle", 0.5), "crossing_share_p90": q("crossing_share_of_straddle", 0.9),
            "crossing_pts_median": q("crossing_pts", 0.5), "assumed_cost_pts_median": q("assumed_cost_pts", 0.5),
            "share_above_3pct": float((u["crossing_share_of_straddle"] > ASSUMED_COST_FRAC).mean()),
@@ -203,12 +252,16 @@ def cmd_run(args):
            "max_loss_usd_median": q("max_loss_usd_per_fly", 0.5),
            "settings": {"volume_share": VOLUME_SHARE, "risk": RISK, "assumed_cost_frac": ASSUMED_COST_FRAC,
                         "window": "15:45-16:15 ET", "atm_mark": "16:00 ET"}}
-    os.makedirs(args.out, exist_ok=True)
-    pr.to_csv(os.path.join(args.out, "liquidity_per_release.csv"), index=False)
-    with open(os.path.join(args.out, "liquidity_results.json"), "w") as fh:
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "liquidity_results.json"), "w") as fh:
         json.dump(res, fh, indent=1)
     lines = ["# Liquidity measurement (pre-registered; no returns computed)", "",
-             f"{res['n_usable']} of {res['n_releases']} release eves usable.", "",
+             f"Coverage: {res['n_releases']} release eves; ATM strike found on {res['n_atm_found']}; usable quotes on all "
+             f"four legs on {res['n_usable']}; all four legs quoted at 16:15 on {res['n_priced_1615']}. Missing quotes are "
+             "never imputed.", "",
+             f"- Pricing check at 16:15 (real mid / normal-model price from VIX1D): straddle median "
+             f"{res['straddle_ratio_median']:.2f} (IQR {res['straddle_ratio_q25']:.2f} to {res['straddle_ratio_q75']:.2f}); "
+             f"wings median {res['wings_ratio_median']:.2f} (IQR {res['wings_ratio_q25']:.2f} to {res['wings_ratio_q75']:.2f}).",
              f"- Cost of crossing all four spreads: median {res['crossing_share_median']:.1%} of the straddle "
              f"(90th percentile {res['crossing_share_p90']:.1%}); median {res['crossing_pts_median']:.2f} index points vs "
              f"{res['assumed_cost_pts_median']:.2f} under the 3% assumption. Above 3%: {res['share_above_3pct']:.0%} of eves; "
@@ -218,8 +271,9 @@ def cmd_run(args):
              f"- Capacity at {VOLUME_SHARE:.0%} of that volume and {RISK:.0%} risk: median {res['capacity_contracts_median']:.0f} "
              f"butterflies (${res['capacity_capital_median']:,.0f} of capital); minimum {res['capacity_contracts_min']:.0f} "
              f"(${res['capacity_capital_min']:,.0f})."]
-    open(os.path.join(args.out, "liquidity_summary.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    open(os.path.join(out, "liquidity_summary.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print("\n".join(lines))
+    return res
 
 
 def main():
@@ -230,8 +284,11 @@ def main():
         p.add_argument("--data", default="data")
         p.add_argument("--derived", default="derived")
         p.add_argument("--out", default="results")
+    p = sub.add_parser("summarize", help="summary from committed per-release metrics (no API key)")
+    p.add_argument("--per-release", default="derived/liquidity_per_release.csv")
+    p.add_argument("--out", default="results")
     args = ap.parse_args()
-    {"fetch": cmd_fetch, "run": cmd_run}[args.cmd](args)
+    {"fetch": cmd_fetch, "run": cmd_run, "summarize": cmd_summarize}[args.cmd](args)
 
 
 if __name__ == "__main__":
